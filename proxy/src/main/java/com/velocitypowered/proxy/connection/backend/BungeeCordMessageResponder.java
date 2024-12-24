@@ -28,7 +28,7 @@ import com.velocitypowered.api.util.UuidUtils;
 import com.velocitypowered.proxy.VelocityServer;
 import com.velocitypowered.proxy.connection.MinecraftConnection;
 import com.velocitypowered.proxy.connection.client.ConnectedPlayer;
-import com.velocitypowered.proxy.protocol.packet.PluginMessage;
+import com.velocitypowered.proxy.protocol.packet.PluginMessagePacket;
 import com.velocitypowered.proxy.protocol.util.ByteBufDataInput;
 import com.velocitypowered.proxy.protocol.util.ByteBufDataOutput;
 import com.velocitypowered.proxy.server.VelocityRegisteredServer;
@@ -37,7 +37,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.util.Optional;
 import java.util.StringJoiner;
-import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.ComponentSerializer;
 import net.kyori.adventure.text.serializer.gson.GsonComponentSerializer;
@@ -68,7 +67,7 @@ public class BungeeCordMessageResponder {
     this.player = player;
   }
 
-  public static boolean isBungeeCordMessage(PluginMessage message) {
+  public static boolean isBungeeCordMessage(PluginMessagePacket message) {
     return MODERN_CHANNEL.getId().equals(message.getChannel()) || LEGACY_CHANNEL.getId()
         .equals(message.getChannel());
   }
@@ -143,7 +142,7 @@ public class BungeeCordMessageResponder {
         out.writeUTF("PlayerList");
         out.writeUTF(info.getServerInfo().getName());
 
-        StringJoiner joiner = new StringJoiner(", ");
+        final StringJoiner joiner = new StringJoiner(", ");
         for (Player online : info.getPlayersConnected()) {
           joiner.add(online.getUsername());
         }
@@ -187,10 +186,9 @@ public class BungeeCordMessageResponder {
 
     Component messageComponent = serializer.deserialize(message);
     if (target.equals("ALL")) {
-      proxy.sendMessage(Identity.nil(), messageComponent);
+      proxy.sendMessage(messageComponent);
     } else {
-      proxy.getPlayer(target).ifPresent(player -> player.sendMessage(Identity.nil(),
-          messageComponent));
+      proxy.getPlayer(target).ifPresent(player -> player.sendMessage(messageComponent));
     }
   }
 
@@ -262,6 +260,13 @@ public class BungeeCordMessageResponder {
     });
   }
 
+  private void processKickRaw(ByteBufDataInput in) {
+    proxy.getPlayer(in.readUTF()).ifPresent(player -> {
+      String kickReason = in.readUTF();
+      player.disconnect(GsonComponentSerializer.gson().deserialize(kickReason));
+    });
+  }
+
   private void processForwardToPlayer(ByteBufDataInput in) {
     Optional<Player> player = proxy.getPlayer(in.readUTF());
     if (player.isPresent()) {
@@ -297,7 +302,7 @@ public class BungeeCordMessageResponder {
   }
 
   static String getBungeeCordChannel(ProtocolVersion version) {
-    return version.compareTo(ProtocolVersion.MINECRAFT_1_13) >= 0 ? MODERN_CHANNEL.getId()
+    return version.noLessThan(ProtocolVersion.MINECRAFT_1_13) ? MODERN_CHANNEL.getId()
         : LEGACY_CHANNEL.getId();
   }
 
@@ -310,11 +315,11 @@ public class BungeeCordMessageResponder {
   private static void sendServerResponse(ConnectedPlayer player, ByteBuf buf) {
     MinecraftConnection serverConnection = player.ensureAndGetCurrentServer().ensureConnected();
     String chan = getBungeeCordChannel(serverConnection.getProtocolVersion());
-    PluginMessage msg = new PluginMessage(chan, buf);
+    PluginMessagePacket msg = new PluginMessagePacket(chan, buf);
     serverConnection.write(msg);
   }
 
-  boolean process(PluginMessage message) {
+  boolean process(PluginMessagePacket message) {
     if (!proxy.getConfiguration().isBungeePluginChannelEnabled()) {
       return false;
     }
@@ -373,6 +378,9 @@ public class BungeeCordMessageResponder {
         break;
       case "KickPlayer":
         this.processKick(in);
+        break;
+      case "KickPlayerRaw":
+        this.processKickRaw(in);
         break;
       default:
         // Do nothing, unknown command

@@ -1,14 +1,14 @@
 import com.github.jengelman.gradle.plugins.shadow.transformers.Log4j2PluginsCacheFileTransformer
 
-@Suppress("DSL_SCOPE_VIOLATION") // fixed in Gradle 8.1
 plugins {
     application
-    `set-manifest-impl-version`
+    id("velocity-init-manifest")
     alias(libs.plugins.shadow)
 }
 
 application {
     mainClass.set("com.velocitypowered.proxy.Velocity")
+    applicationDefaultJvmArgs += listOf("-Dvelocity.packet-decode-logging=true");
 }
 
 tasks {
@@ -51,7 +51,11 @@ tasks {
         exclude("it/unimi/dsi/fastutil/ints/*Int2Short*")
         exclude("it/unimi/dsi/fastutil/ints/*Int2Reference*")
         exclude("it/unimi/dsi/fastutil/ints/IntAVL*")
-        exclude("it/unimi/dsi/fastutil/ints/IntArray*")
+        exclude("it/unimi/dsi/fastutil/ints/IntArrayF*")
+        exclude("it/unimi/dsi/fastutil/ints/IntArrayI*")
+        exclude("it/unimi/dsi/fastutil/ints/IntArrayL*")
+        exclude("it/unimi/dsi/fastutil/ints/IntArrayP*")
+        exclude("it/unimi/dsi/fastutil/ints/IntArraySet*")
         exclude("it/unimi/dsi/fastutil/ints/*IntBi*")
         exclude("it/unimi/dsi/fastutil/ints/Int*Pair")
         exclude("it/unimi/dsi/fastutil/ints/IntLinked*")
@@ -86,14 +90,30 @@ tasks {
         exclude("org/checkerframework/checker/**")
 
         relocate("org.bstats", "com.velocitypowered.proxy.bstats")
+
+        // Include Configurate 3
+        val configurateBuildTask = project(":deprecated-configurate3").tasks.named("shadowJar")
+        dependsOn(configurateBuildTask)
+        from(zipTree(configurateBuildTask.map { it.outputs.files.singleFile }))
+    }
+
+    runShadow {
+        workingDir = file("run").also(File::mkdirs)
+        standardInput = System.`in`
+    }
+    named<JavaExec>("run") {
+        workingDir = file("run").also(File::mkdirs)
+        standardInput = System.`in` // Doesn't work?
     }
 }
 
 dependencies {
     implementation(project(":velocity-api"))
     implementation(project(":velocity-native"))
+    implementation(project(":velocity-proxy-log4j2-plugin"))
 
     implementation(libs.bundles.log4j)
+    implementation(libs.kyori.ansi)
     implementation(libs.netty.codec)
     implementation(libs.netty.codec.haproxy)
     implementation(libs.netty.codec.http)
@@ -101,6 +121,9 @@ dependencies {
     implementation(libs.netty.transport.native.epoll)
     implementation(variantOf(libs.netty.transport.native.epoll) { classifier("linux-x86_64") })
     implementation(variantOf(libs.netty.transport.native.epoll) { classifier("linux-aarch_64") })
+    implementation(libs.netty.transport.native.kqueue)
+    implementation(variantOf(libs.netty.transport.native.kqueue) { classifier("osx-x86_64") })
+    implementation(variantOf(libs.netty.transport.native.kqueue) { classifier("osx-aarch_64") })
 
     implementation(libs.jopt)
     implementation(libs.terminalconsoleappender)
@@ -108,14 +131,17 @@ dependencies {
     runtimeOnly(libs.disruptor)
     implementation(libs.fastutil)
     implementation(platform(libs.adventure.bom))
-    implementation("net.kyori:adventure-nbt")
+    implementation(libs.adventure.text.serializer.json.legacy.impl)
     implementation(libs.adventure.facet)
-    implementation(libs.asynchttpclient)
     implementation(libs.completablefutures)
     implementation(libs.nightconfig)
     implementation(libs.bstats)
     implementation(libs.lmbda)
+    implementation(libs.asm)
     implementation(libs.bundles.flare)
     compileOnly(libs.spotbugs.annotations)
+    compileOnly(libs.auto.service.annotations)
     testImplementation(libs.mockito)
+
+    annotationProcessor(libs.auto.service)
 }
