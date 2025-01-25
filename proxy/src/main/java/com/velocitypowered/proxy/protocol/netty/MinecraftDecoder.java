@@ -35,8 +35,8 @@ public class MinecraftDecoder extends ChannelInboundHandlerAdapter {
 
   public static final boolean DEBUG = Boolean.getBoolean("velocity.packet-decode-logging");
   private static final QuietRuntimeException DECODE_FAILED =
-      new QuietRuntimeException("A packet did not decode successfully (invalid data). If you are a "
-          + "developer, launch Velocity with -Dvelocity.packet-decode-logging=true to see more.");
+      new QuietRuntimeException("A packet did not decode successfully (invalid data). For more "
+          + "information, launch Velocity with -Dvelocity.packet-decode-logging=true to see more.");
 
   private final ProtocolUtils.Direction direction;
   private StateRegistry state;
@@ -56,8 +56,7 @@ public class MinecraftDecoder extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-    if (msg instanceof ByteBuf) {
-      ByteBuf buf = (ByteBuf) msg;
+    if (msg instanceof ByteBuf buf) {
       tryDecode(ctx, buf);
     } else {
       ctx.fireChannelRead(msg);
@@ -146,5 +145,9 @@ public class MinecraftDecoder extends ChannelInboundHandlerAdapter {
   public void setState(StateRegistry state) {
     this.state = state;
     this.setProtocolVersion(registry.version);
+  }
+
+  public ProtocolUtils.Direction getDirection() {
+    return direction;
   }
 }
